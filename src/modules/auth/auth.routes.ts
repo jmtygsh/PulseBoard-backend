@@ -3,14 +3,14 @@ import * as controller from "./auth.controller.js";
 // import { authenticate } from "./auth.middleware.js";
 // import validate from "../../common/middleware/validate.middleware.js";
 import RegisterDto from "./dto/dto.register.js";
-import validateMiddleware from "../../common/middleware/validate.middleware.js";
+import { checkAuthenticate, validateMiddleware } from "../../common/middleware/validate.middleware.js";
 // import LoginDto from "./dto/login.dto.js";
 // import ForgotPasswordDto from "./dto/forgot-password.dto.js";
 // import ResetPasswordDto from "./dto/reset-password.dto.js";
 
 const router: Router = Router();
 
-router.post("/register", validateMiddleware(RegisterDto.schema), controller.register);
+router.post("/register", checkAuthenticate, validateMiddleware(RegisterDto.schema), controller.register);
 // router.post("/login", validate(LoginDto), controller.login);
 // router.post("/refresh-token", controller.refreshToken);
 // router.post("/logout", authenticate, controller.logout);

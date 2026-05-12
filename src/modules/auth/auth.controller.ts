@@ -1,24 +1,18 @@
-
-
-
-
 import type { Request, Response } from "express";
 
 // import project files 
 import * as authService from "./auth.service.js";
-import type { RegisterUser } from "./auth.types.js";
-import { socialAuthLogic } from "./auth.social.js";
-
 
 
 // import constants 
 import ApiResponse from "../../common/utils/api-response.js";
-import type { socialAuth } from "./auth.types.js";
+import type { RegisterUserType, SocialAuthType } from "./dto/dto.register.js";
+import { socialAuthLogic } from "./auth.social.js";
 
-const register = async (req: Request<{}, {}, RegisterUser>, res: Response) => {
 
-    const body = req.body;
-    const user = await authService.register(body);
+const register = async (req: Request<{}, {}, RegisterUserType>, res: Response) => {
+
+    const user = await authService.register(req.body);
     ApiResponse.created(
         res,
         "Registration successful. Please verify your email.",
@@ -26,7 +20,7 @@ const register = async (req: Request<{}, {}, RegisterUser>, res: Response) => {
     );
 };
 
-const socialAuthentication = async (req: Request<{}, {}, socialAuth>, res: Response) => {
+const socialAuthentication = async (req: Request<{}, {}, SocialAuthType>, res: Response) => {
     const user = await socialAuthLogic(req.body);
     ApiResponse.created(res, "Login successful", user);
 };

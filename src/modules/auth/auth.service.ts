@@ -21,10 +21,11 @@ import {
 
 // import constants 
 import ApiError from "../../common/utils/api-error.js";
-import type { RegisterUser } from "./auth.types.js";
+import type { RegisterUserType } from "./dto/dto.register.js";
 
 
-const register = async ({ name, email, password }: RegisterUser) => {
+
+const register = async ({ name, email, password }: RegisterUserType) => {
   // 1. Check if email already exists
   const existingUser = await db
     .select()

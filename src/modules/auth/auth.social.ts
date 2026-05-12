@@ -20,11 +20,11 @@ import {
 
 // import constants 
 import ApiError from "../../common/utils/api-error.js";
-import type { socialAuth } from "./auth.types.js";
+import type { SocialAuthType } from "./dto/dto.register.js";
 
 
 
-const socialAuthLogic = async (socialProfileData: socialAuth) => {
+const socialAuthLogic = async (socialProfileData: SocialAuthType) => {
     const { email, name, providerUserId, avatarUrl } = socialProfileData;
 
     // 1. Check if the user already exists by email
