@@ -20,8 +20,12 @@ const usersTable = pgTable("users", {
     password: text("password"),
     avatarUrl: text("avatar_url"),
 
-    verificationToken: text("verification_token"),
     isVerified: boolean("is_verified").default(false),
+
+    verificationToken: text("verification_token"),
+    refreshToken: text("refresh_token"),
+    resetPasswordToken: text("reset_password_token"),
+    resetPasswordExpiresAt: timestamp("reset_password_expires_at"),
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").$onUpdate(() => new Date()),

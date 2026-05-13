@@ -2,7 +2,7 @@ import { Router } from "express";
 import * as controller from "./auth.controller.js";
 // import { authenticate } from "./auth.middleware.js";
 // import validate from "../../common/middleware/validate.middleware.js";
-import RegisterDto from "./dto/dto.register.js";
+import { RegisterUserSchema, LoginUserSchema, RefreshTokenSchema, LogoutUserSchema, VerifyEmailSchema, ForgotPasswordSchema, ResetPasswordSchema } from "./dto/index.js";
 import { checkAuthenticate, validateMiddleware } from "../../common/middleware/validate.middleware.js";
 // import LoginDto from "./dto/login.dto.js";
 // import ForgotPasswordDto from "./dto/forgot-password.dto.js";
@@ -10,21 +10,23 @@ import { checkAuthenticate, validateMiddleware } from "../../common/middleware/v
 
 const router: Router = Router();
 
-router.post("/register", checkAuthenticate, validateMiddleware(RegisterDto.schema), controller.register);
-// router.post("/login", validate(LoginDto), controller.login);
-// router.post("/refresh-token", controller.refreshToken);
-// router.post("/logout", authenticate, controller.logout);
-// router.get("/verify-email/:token", controller.verifyEmail);
-// router.post(
-//   "/forgot-password",
-//   validate(ForgotPasswordDto),
-//   controller.forgotPassword,
-// );
-// router.put(
-//   "/reset-password/:token",
-//   validate(ResetPasswordDto),
-//   controller.resetPassword,
-// );
+router.post("/register", checkAuthenticate, validateMiddleware(RegisterUserSchema), controller.register);
+router.post("/login", checkAuthenticate, validateMiddleware(LoginUserSchema), controller.login);
+router.post("/refresh-token", checkAuthenticate, validateMiddleware(RefreshTokenSchema), controller.refreshToken);
+router.post("/logout", checkAuthenticate, validateMiddleware(LogoutUserSchema), controller.logout);
+router.get("/verify-email/:token", checkAuthenticate, validateMiddleware(VerifyEmailSchema), controller.verifyEmail);
+router.post(
+    "/forgot-password",
+    checkAuthenticate,
+    validateMiddleware(ForgotPasswordSchema),
+    controller.forgotPassword,
+);
+router.put(
+    "/reset-password/:token",
+    checkAuthenticate,
+    validateMiddleware(ResetPasswordSchema),
+    controller.resetPassword,
+);
 // router.get("/me", authenticate, controller.getMe);
 
 export default router;

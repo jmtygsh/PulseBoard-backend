@@ -1,24 +1,29 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 
-const generateAccessToken = (payload) => {
+// Define the shape of your payload
+export interface TokenPayload extends jwt.JwtPayload {
+  id: string;
+}
+
+const generateAccessToken = (payload: TokenPayload) => {
   return jwt.sign(payload, process.env.JWT_ACCESS_SECRET!, {
     expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "15m",
   });
 };
 
-const verifyAccessToken = (token: string) => {
-  return jwt.verify(token, process.env.JWT_ACCESS_SECRET!);
+const verifyAccessToken = (token: string): TokenPayload => {
+  return jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as TokenPayload;
 };
 
-const generateRefreshToken = (payload) => {
+const generateRefreshToken = (payload: TokenPayload) => {
   return jwt.sign(payload, process.env.JWT_REFRESH_SECRET!, {
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
   });
 };
 
-const verifyRefreshToken = (token: string) => {
-  return jwt.verify(token, process.env.JWT_REFRESH_SECRET!);
+const verifyRefreshToken = (token: string): TokenPayload => {
+  return jwt.verify(token, process.env.JWT_REFRESH_SECRET!) as TokenPayload;
 };
 
 const generateResetToken = () => {
