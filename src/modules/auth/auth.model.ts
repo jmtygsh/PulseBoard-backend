@@ -5,9 +5,6 @@ import {
     text,
     boolean,
     timestamp,
-    integer,
-    json,
-    jsonb,
 } from "drizzle-orm/pg-core";
 
 /* =========================

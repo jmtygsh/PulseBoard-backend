@@ -19,7 +19,7 @@ import ApiError from "../utils/api-error.js";
 --------------------------------------------------------- */
 const validateMiddleware = (schema: ZodSchema) => {
     return (req: Request, res: Response, next: NextFunction) => {
-        const result = schema.safeParse(req.body);
+        const result = schema.safeParse(req.body || req.params || req.query || req.headers);
         if (!result.success) {
             const errors = result.error.issues.map((err) => `${err.path.join('.')}: ${err.message}`);
             throw ApiError.badRequest(errors.join("; "));
@@ -36,26 +36,27 @@ const validateMiddleware = (schema: ZodSchema) => {
 --------------------------------------------------------- */
 
 const checkAuthenticate = (req: Request, res: Response, next: NextFunction) => {
-
-    const header = req.headers['authorization']
-    if (!header) next()
-
-    if (!header?.startsWith('Bearer')) {
-        throw ApiError.unauthorized("Authentication token must start with Bearer");
+    const header = req.headers['authorization'];
+    if (!header || !header.startsWith('Bearer ')) {
+        return next();
     }
 
-    const token = header.split(' ')[1]
+    const token = header.split(' ')[1];
+    if (!token) {
+        return next();
+    }
 
-    if (!token) throw ApiError.unauthorized("Authentication token is missing");
+    try {
+        const userId = verifyAccessToken(token).id;
+        if (userId) {
+            // req.user ===  undefined then we assign userId to req.user
+            req.user = userId;
+        }
+    } catch (error) {
+        // Ignoring token verification errors to allow unauthenticated access
+    }
 
-    const user = verifyAccessToken(token)
-
-    if (!user) throw ApiError.unauthorized("Invalid or expired token");
-
-    req.user = user;
-
-    next();
-
+    return next();
 };
 
 
@@ -63,13 +64,19 @@ const checkAuthenticate = (req: Request, res: Response, next: NextFunction) => {
   check only if user is authenticated or not,
   if not do not allow access to the protected routes
 --------------------------------------------------------- */
-function restrictToAuthenticatedUser() {
-    return function (req: Request, res: Response, next: NextFunction) {
-        // @ts-ignore
-        if (!req.user) throw ApiError.unauthorized("Authentication Required");
-        next()
-    }
-}
+const protectedRoute = (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) throw ApiError.unauthorized("Authentication Required");
+    return next();
+};
 
+export { validateMiddleware, checkAuthenticate, protectedRoute };
 
-export { validateMiddleware, checkAuthenticate, restrictToAuthenticatedUser };
+/* ---------------------------------------------------------
+ "checkAuthenticate" softly identifies users while "protectedRoute" strictly blocks unauthenticated access, 
+ enabling flexible anonymous or authenticated poll responses without duplicate logic.
+
+ Due to, i need to use "checkAuthenticate" middleware on every routes, but if i keep strick then anonomous users can not access.
+ Business logic poll should be answerable by authenticated users & anonymous users. 
+ (base on condition set in the poll creation time) allow anonymous users to answer the poll or not.
+--------------------------------------------------------- */
+

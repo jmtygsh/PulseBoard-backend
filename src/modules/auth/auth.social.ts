@@ -21,6 +21,7 @@ import {
 // import constants 
 import ApiError from "../../common/utils/api-error.js";
 import type { SocialAuthType } from "./dto/dto.register.js";
+import { hashToken } from "../../common/utils/hashToken.js";
 
 
 
@@ -76,6 +77,18 @@ const socialAuthLogic = async (socialProfileData: SocialAuthType) => {
     // 3. Generate tokens for both login and register flows
     const accessToken = generateAccessToken({ id: user.id });
     const refreshToken = generateRefreshToken({ id: user.id });
+
+
+    await db
+        .update(usersTable)
+        .set({ refreshToken: hashToken(refreshToken) })
+        .where(eq(usersTable.id, user.id))
+        .returning({
+            id: usersTable.id,
+            name: usersTable.name,
+            email: usersTable.email,
+            refreshToken: usersTable.refreshToken,
+        });
 
     return {
         user: { id: user.id, name: user.name, email: user.email },

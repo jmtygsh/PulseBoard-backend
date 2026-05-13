@@ -7,6 +7,9 @@ export interface TokenPayload extends jwt.JwtPayload {
 }
 
 const generateAccessToken = (payload: TokenPayload) => {
+
+  // jmt.sign giving me typescript error (Later fix)
+  // @ts-ignore
   return jwt.sign(payload, process.env.JWT_ACCESS_SECRET!, {
     expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "15m",
   });
@@ -17,6 +20,8 @@ const verifyAccessToken = (token: string): TokenPayload => {
 };
 
 const generateRefreshToken = (payload: TokenPayload) => {
+  // jmt.sign giving me typescript error (Later fix)
+  // @ts-ignore
   return jwt.sign(payload, process.env.JWT_REFRESH_SECRET!, {
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
   });

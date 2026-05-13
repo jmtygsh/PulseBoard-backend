@@ -2,7 +2,11 @@
 
 // import third party 
 import express from "express";
+import cookieParser from "cookie-parser";
 import type { Express } from "express";
+
+
+// import modules
 import authRoute from "./modules/auth/auth.routes.js";
 import pollRoute from "./modules/poll/poll.routes.js";
 
@@ -14,9 +18,10 @@ const app: Express = express();
 // Middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 app.use("/health", (req, res) => {
-    res.status(200).json({ message: "Healthy" });
+    res.status(200).json({ message: "Healthy", success: true, code: 200 });
 });
 
 app.use("/api/auth", authRoute);

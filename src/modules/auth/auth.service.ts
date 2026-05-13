@@ -25,6 +25,9 @@ import {
 import ApiError from "../../common/utils/api-error.js";
 import type { RegisterUserType, LoginUserType, RefreshTokenType, LogoutUserType, VerifyEmailType, ForgotPasswordType, ResetPasswordType } from "./dto/index.js";
 
+
+
+
 const register = async ({ name, email, password }: RegisterUserType) => {
   // 1. Check if email already exists
   const existingUser = await db
@@ -45,6 +48,8 @@ const register = async ({ name, email, password }: RegisterUserType) => {
   const { rawToken, hashedToken } = generateResetToken();
   const hashedPassword = await hashPassword(password);
 
+  console.log("raw:", rawToken);
+
   // 3. Insert into database using Drizzle
   const [newUser] = await db
     .insert(usersTable)
@@ -52,7 +57,7 @@ const register = async ({ name, email, password }: RegisterUserType) => {
       name,
       email,
       password: hashedPassword,
-      verificationToken: hashedToken, // Save the hashed version
+      verificationToken: hashedToken, // Save the hashed version to verify email
     })
     .returning({
       id: usersTable.id,
@@ -232,10 +237,12 @@ const forgotPassword = async ({ email }: ForgotPasswordType) => {
     .limit(1);
 
 
-  if (!user) throw ApiError.notFound("No account with that email");
+  if (!user) throw ApiError.notFound("email & password not found");
 
   // 2. Generate reset token
   const { rawToken, hashedToken } = generateResetToken();
+
+  console.log('rawToken on forgotPassword:', rawToken);
 
   await db
     .update(usersTable)
@@ -295,11 +302,15 @@ const resetPassword = async ({ token, password }: ResetPasswordType) => {
     .where(eq(usersTable.id, user.id));
 };
 
-// const getMe = async (userId) => {
-//   const user = await User.findById(userId);
-//   if (!user) throw ApiError.notFound("User not found");
-//   return user;
-// };
+const getMe = async (userId: string) => {
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  if (!user) throw ApiError.notFound("User not found");
+  return user;
+};
 
 export {
   register,
@@ -309,5 +320,5 @@ export {
   verifyEmail,
   forgotPassword,
   resetPassword,
-  // getMe,
+  getMe,
 };

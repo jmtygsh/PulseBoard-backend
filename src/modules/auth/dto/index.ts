@@ -2,18 +2,18 @@
 
 import { RegisterUserSchema, SocialAuthSchema } from "./dto.register.js";
 import { LoginUserSchema } from "./dto.login.js";
-import { RefreshTokenSchema } from "./dto.refresh.js";
-import { LogoutUserSchema } from "./dto.logout.js";
 import { VerifyEmailSchema } from "./dto.verify-email.js";
 import { ForgotPasswordSchema } from "./dto.forgetpassword.js";
 import { ResetPasswordSchema } from "./dto.resetpassword.js";
+import { RefreshTokenSchema } from "./dto.refresh.js";
+import { LogoutUserSchema } from "./dto.logout.js";
 
 export {
     RegisterUserSchema,
     SocialAuthSchema,
-    LoginUserSchema,
     RefreshTokenSchema,
     LogoutUserSchema,
+    LoginUserSchema,
     VerifyEmailSchema,
     ForgotPasswordSchema,
     ResetPasswordSchema

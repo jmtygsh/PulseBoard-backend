@@ -41,18 +41,18 @@ const login = async (req: Request, res: Response) => {
 
 const refreshToken = async (req: Request, res: Response) => {
     const token = req.cookies?.refreshToken;
-    const { accessToken } = await authService.refresh(token);
+    const { accessToken } = await authService.refresh({ token });
     ApiResponse.ok(res, "Token refreshed", { accessToken });
 };
 
 const logout = async (req: Request, res: Response) => {
-    await authService.logout(req.body.user.id);
+    await authService.logout({ userId: req.user! });
     res.clearCookie("refreshToken");
     ApiResponse.ok(res, "Logged out successfully");
 };
 
-const verifyEmail = async (req: Request, res: Response) => {
-    await authService.verifyEmail(req.body);
+const verifyEmail = async (req: Request<{ token: string }>, res: Response) => {
+    await authService.verifyEmail({ token: req.params.token });
     ApiResponse.ok(res, "Email verified successfully");
 };
 
@@ -61,15 +61,16 @@ const forgotPassword = async (req: Request, res: Response) => {
     ApiResponse.ok(res, "Password reset email sent successfully");
 };
 
-const resetPassword = async (req: Request, res: Response) => {
-    await authService.resetPassword(req.body);
+const resetPassword = async (req: Request<{ token: string }>, res: Response) => {
+    // Take the token from the URL params and the new password from the body
+    await authService.resetPassword({ token: req.params.token, password: req.body.password });
     ApiResponse.ok(res, "Password reset successful");
 };
 
-// const getMe = async (req, res) => {
-//     const user = await authService.getMe(req.user.id);
-//     ApiResponse.ok(res, "User profile", user);
-// };
+const getMe = async (req: Request, res: Response) => {
+    const user = await authService.getMe(req.user!);
+    ApiResponse.ok(res, "User profile", user);
+};
 
 export {
     register,
@@ -80,5 +81,5 @@ export {
     verifyEmail,
     forgotPassword,
     resetPassword,
-    // getMe,
+    getMe,
 };
