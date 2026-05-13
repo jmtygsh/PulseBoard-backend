@@ -19,11 +19,13 @@ import ApiError from "../utils/api-error.js";
 --------------------------------------------------------- */
 const validateMiddleware = (schema: ZodSchema) => {
     return (req: Request, res: Response, next: NextFunction) => {
-        const result = schema.safeParse(req.body || req.params || req.query || req.headers);
+        const result = schema.safeParse(req.body);
+
         if (!result.success) {
             const errors = result.error.issues.map((err) => `${err.path.join('.')}: ${err.message}`);
             throw ApiError.badRequest(errors.join("; "));
         }
+
         req.body = result.data;
         next();
     }

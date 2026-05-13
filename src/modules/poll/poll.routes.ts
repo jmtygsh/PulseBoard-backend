@@ -1,12 +1,18 @@
 import { Router } from "express";
 import * as controller from "./poll.controller.js";
-import { validateMiddleware, checkAuthenticate } from "../../common/middleware/validate.middleware.js";
-import { CreatePollSchema } from "./dto/dto.poll.js";
+import { validateMiddleware, checkAuthenticate, protectedRoute } from "../../common/middleware/validate.middleware.js";
+import { CreatePollSchema, AnswerPollSchema } from "./dto/index.js";
 
 
 const router: Router = Router();
 
 // Create a new poll (Requires Auth)
-router.post("/", checkAuthenticate, validateMiddleware(CreatePollSchema), controller.createPoll);
+router.post("/create", checkAuthenticate, protectedRoute, validateMiddleware(CreatePollSchema), controller.createPoll);
+
+// Fetch a poll by its share slug
+// Notice: We ONLY use checkAuthenticate here (soft check) so anonymous users can still fetch it if requireAuth is false
+router.get("/questions/:slug", checkAuthenticate, controller.getPollBySlug);
+
+router.post("/answers/:slug", checkAuthenticate, validateMiddleware(AnswerPollSchema), controller.answerPoll);
 
 export default router;

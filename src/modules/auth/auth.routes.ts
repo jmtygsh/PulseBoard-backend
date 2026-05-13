@@ -1,6 +1,6 @@
 import { Router } from "express";
 import * as controller from "./auth.controller.js";
-import { RegisterUserSchema, LoginUserSchema, LogoutUserSchema, RefreshTokenSchema, VerifyEmailSchema, ForgotPasswordSchema, ResetPasswordSchema } from "./dto/index.js";
+import { RegisterUserSchema, LoginUserSchema, LogoutUserSchema, ForgotPasswordSchema, ResetPasswordSchema } from "./dto/index.js";
 import { checkAuthenticate, protectedRoute, validateMiddleware } from "../../common/middleware/validate.middleware.js";
 
 
@@ -11,7 +11,7 @@ router.post("/register", checkAuthenticate, validateMiddleware(RegisterUserSchem
 router.post("/login", checkAuthenticate, validateMiddleware(LoginUserSchema), controller.login);
 router.post("/refresh-token", checkAuthenticate, controller.refreshToken);
 
-router.get("/verify-email/:token", checkAuthenticate, validateMiddleware(VerifyEmailSchema), controller.verifyEmail);
+router.get("/verify-email/:token", checkAuthenticate, controller.verifyEmail);
 router.post(
     "/forgot-password",
     checkAuthenticate,
@@ -28,7 +28,7 @@ router.put(
 
 
 // Protected Routes (Require user to be logged in)
-router.post("/logout", checkAuthenticate, validateMiddleware(LogoutUserSchema), protectedRoute, controller.logout);
+router.post("/logout", checkAuthenticate, protectedRoute, validateMiddleware(LogoutUserSchema), controller.logout);
 
 router.get("/me", checkAuthenticate, protectedRoute, controller.getMe);
 

@@ -7,9 +7,9 @@ import {
     timestamp,
     integer,
 } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 
 import { usersTable } from "../auth/auth.model.js";
-
 
 /* =========================
    POLLS
@@ -109,5 +109,36 @@ const responseAnswersTable = pgTable("response_answers", {
     updatedAt: timestamp("updated_at").$onUpdate(() => new Date()),
 });
 
+/* =========================
+   RELATIONS
+========================= */
+const pollsRelations = relations(pollsTable, ({ many }) => ({
+    questions: many(questionsTable),
+}));
 
-export { pollsTable, questionsTable, questionOptionsTable, responsesTable, responseAnswersTable };
+const questionsRelations = relations(questionsTable, ({ one, many }) => ({
+    poll: one(pollsTable, {
+        fields: [questionsTable.pollId],
+        references: [pollsTable.id],
+    }),
+    options: many(questionOptionsTable),
+}));
+
+const questionOptionsRelations = relations(questionOptionsTable, ({ one }) => ({
+    question: one(questionsTable, {
+        fields: [questionOptionsTable.questionId],
+        references: [questionsTable.id],
+    }),
+}));
+
+
+export {
+    pollsTable,
+    questionsTable,
+    questionOptionsTable,
+    responsesTable,
+    responseAnswersTable,
+    pollsRelations,
+    questionsRelations,
+    questionOptionsRelations
+};

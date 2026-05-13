@@ -3,6 +3,7 @@
 // import third party 
 import express from "express";
 import cookieParser from "cookie-parser";
+import cors from "cors";
 import type { Express } from "express";
 
 
@@ -16,6 +17,10 @@ import ApiError from "./common/utils/api-error.js";
 const app: Express = express();
 
 // Middlewares
+app.use(cors({
+    origin: ["*"],
+    credentials: true,
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
