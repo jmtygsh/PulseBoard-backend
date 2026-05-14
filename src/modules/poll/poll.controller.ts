@@ -44,5 +44,15 @@ const answerPoll = async (req: Request<{ slug: string }>, res: Response) => {
     );
 };
 
+const getPollAnalytics = async (req: Request<{ slug: string }>, res: Response) => {
+    const analytics = await pollService.getPollAnalyticsLogic({ slug: req.params.slug });
 
-export { createPoll, getPollBySlug, answerPoll };
+    ApiResponse.ok(
+        res,
+        "Poll analytics fetched successfully",
+        analytics
+    );
+};
+
+
+export { createPoll, getPollBySlug, answerPoll, getPollAnalytics };

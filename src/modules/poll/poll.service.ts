@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { db } from "../../common/config/db.js";
 import { pollsTable, questionsTable, questionOptionsTable, responsesTable, responseAnswersTable } from "../../common/config/schema.js";
 import type { CreatePollType, GetPollType, AnswerPollType } from "./dto/index.js";
@@ -229,5 +229,113 @@ const answerPollBySlugLogic = async ({ slug, answers, anonymousId, userId }: Ans
 
 };
 
+/* =========================
+    Get poll analytics / results
+========================= */
+const getPollAnalyticsLogic = async ({ slug }: { slug: string }) => {
+    if (!slug) throw ApiError.badRequest("Poll slug is required");
 
-export { createPollLogic, getPollBySlugLogic, answerPollBySlugLogic };
+    /* =========================
+       1. FETCH POLL SKELETON
+    ========================= */
+    const poll = await db.query.pollsTable.findFirst({
+        where: (pollsTable, { eq }) => eq(pollsTable.shareSlug, slug),
+        with: {
+            questions: {
+                orderBy: (questionsTable, { asc }) => [asc(questionsTable.displayOrder)],
+                with: {
+                    options: {
+                        orderBy: (questionOptionsTable, { asc }) => [asc(questionOptionsTable.displayOrder)]
+                    }
+                }
+            }
+        }
+    });
+
+    if (!poll) throw ApiError.notFound("Poll not found");
+
+    /* =========================
+       2. FETCH RESPONSES
+    ========================= */
+    const responses = await db
+        .select({
+            id: responsesTable.id,
+            userId: responsesTable.userId
+        })
+        .from(responsesTable)
+        .where(eq(responsesTable.pollId, poll.id));
+
+    /* =========================
+       3. FETCH ANSWERS
+    ========================= */
+    const responseIds = responses.map((r) => r.id);
+
+    let answers: { selectedOptionId: string, responseId: string }[] = [];
+
+    if (responseIds.length > 0) {
+        answers = await db
+            .select({
+                selectedOptionId: responseAnswersTable.selectedOptionId,
+                responseId: responseAnswersTable.responseId
+            })
+            .from(responseAnswersTable)
+            .where(inArray(responseAnswersTable.responseId, responseIds));
+    }
+
+    /* =========================
+       4. CALCULATE STATS
+    ========================= */
+    const totalResponses = responses.length;
+    const authResponses = responses.filter((r) => r.userId !== null).length;
+    const anoResponses = responses.filter((r) => r.userId === null).length;
+
+    /* =========================
+       5. FORMAT RESULTS
+    ========================= */
+    const formattedResults = {
+        pollId: poll.id,
+        title: poll.title,
+        status: poll.status,
+        responses: {
+            total: totalResponses,
+            auth: authResponses,
+            ano: anoResponses
+        },
+        questions: poll.questions.map((q) => {
+            return {
+                id: q.id,
+                questionText: q.questionText,
+                options: q.options.map((opt) => {
+
+                    // Filter answers for this specific option
+                    const optionAnswers = answers.filter((a) => a.selectedOptionId === opt.id);
+
+                    // Count auth vs ano votes by checking the response it belongs to
+                    const authVotes = optionAnswers.filter((a) => {
+                        const response = responses.find((r) => r.id === a.responseId);
+                        return response && response.userId !== null;
+                    }).length;
+
+                    const anoVotes = optionAnswers.filter((a) => {
+                        const response = responses.find((r) => r.id === a.responseId);
+                        return response && response.userId === null;
+                    }).length;
+
+                    return {
+                        id: opt.id,
+                        optionText: opt.optionText,
+                        voteCount: {
+                            total: optionAnswers.length,
+                            auth: authVotes,
+                            ano: anoVotes
+                        }
+                    };
+                })
+            };
+        })
+    };
+
+    return formattedResults;
+};
+
+export { createPollLogic, getPollBySlugLogic, answerPollBySlugLogic, getPollAnalyticsLogic };
