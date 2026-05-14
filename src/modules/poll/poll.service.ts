@@ -6,13 +6,10 @@ import type { CreatePollType, GetPollType, AnswerPollType } from "./dto/index.js
 
 import ApiError from "../../common/utils/api-error.js";
 import { hashToken } from "../../common/utils/hashToken.js";
+import { io } from "../../common/config/socket.io.js";
 
 
 
-/* =========================
-    Handle multiple questions & answers 
-    descrture from array object to normal rows and columns
-========================= */
 const createPollLogic = async ({
     userId,
     title,
@@ -110,10 +107,6 @@ const createPollLogic = async ({
     return newPoll;
 };
 
-/* =========================
-    Fetch a poll by its shareSlug
-    Includes nested questions and options
-========================= */
 const getPollBySlugLogic = async ({ slug, userId }: GetPollType) => {
 
     // I decided to use drizel relation api to arrange nested data in one db query 
@@ -142,11 +135,6 @@ const getPollBySlugLogic = async ({ slug, userId }: GetPollType) => {
 
     return poll;
 };
-
-
-/* =========================
-    Answer a poll by its shareSlug
-========================= */
 
 const answerPollBySlugLogic = async ({ slug, answers, anonymousId, userId }: AnswerPollType & { slug: string }) => {
 
@@ -227,17 +215,35 @@ const answerPollBySlugLogic = async ({ slug, answers, anonymousId, userId }: Ans
         }
     });
 
+    // After successful submission, broadcast only the new answer data (Delta Update)
+    if (io) {
+        try {
+            // Transform answers object into an array of { questionId, optionId } for easier frontend mapping
+            const formattedAnswers = Object.entries(answers).map(([questionId, selectedOptionId]) => ({
+                questionId,
+                selectedOptionId
+            }));
+
+            const deltaUpdate = {
+                isAuth: !!userId,
+                // Provide the specific ID used for this vote (either userId or anonymousId)
+                voterId: userId || anonymousId,
+                answers: formattedAnswers
+            };
+
+            // Push the incremental update to anyone listening in this poll's room
+            io.to(`poll_${slug}`).emit("new_response", deltaUpdate);
+        } catch (error) {
+            console.error("Failed to emit socket event:", error);
+        }
+    }
 };
 
-/* =========================
-    Get poll analytics / results
-========================= */
 const getPollAnalyticsLogic = async ({ slug }: { slug: string }) => {
     if (!slug) throw ApiError.badRequest("Poll slug is required");
 
-    /* =========================
-       1. FETCH POLL SKELETON
-    ========================= */
+
+    //  fetch poll skeleton
     const poll = await db.query.pollsTable.findFirst({
         where: (pollsTable, { eq }) => eq(pollsTable.shareSlug, slug),
         with: {
@@ -254,9 +260,7 @@ const getPollAnalyticsLogic = async ({ slug }: { slug: string }) => {
 
     if (!poll) throw ApiError.notFound("Poll not found");
 
-    /* =========================
-       2. FETCH RESPONSES
-    ========================= */
+    //  fetch responses
     const responses = await db
         .select({
             id: responsesTable.id,
@@ -265,9 +269,7 @@ const getPollAnalyticsLogic = async ({ slug }: { slug: string }) => {
         .from(responsesTable)
         .where(eq(responsesTable.pollId, poll.id));
 
-    /* =========================
-       3. FETCH ANSWERS
-    ========================= */
+    //  fetch answers
     const responseIds = responses.map((r) => r.id);
 
     let answers: { selectedOptionId: string, responseId: string }[] = [];
@@ -282,16 +284,12 @@ const getPollAnalyticsLogic = async ({ slug }: { slug: string }) => {
             .where(inArray(responseAnswersTable.responseId, responseIds));
     }
 
-    /* =========================
-       4. CALCULATE STATS
-    ========================= */
+    //  calculate stats
     const totalResponses = responses.length;
     const authResponses = responses.filter((r) => r.userId !== null).length;
     const anoResponses = responses.filter((r) => r.userId === null).length;
 
-    /* =========================
-       5. FORMAT RESULTS
-    ========================= */
+    //  format results
     const formattedResults = {
         pollId: poll.id,
         title: poll.title,

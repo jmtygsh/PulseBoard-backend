@@ -13,14 +13,12 @@ import pollRoute from "./modules/poll/poll.routes.js";
 
 // file import 
 import ApiError from "./common/utils/api-error.js";
+import { corsConfig } from "./common/config/cors.config.js";
 
 const app: Express = express();
 
 // Middlewares
-app.use(cors({
-    origin: ["*"],
-    credentials: true,
-}));
+app.use(cors(corsConfig));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());

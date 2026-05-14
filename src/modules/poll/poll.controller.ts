@@ -26,7 +26,6 @@ const getPollBySlug = async (req: Request<{ slug: string }>, res: Response) => {
     );
 };
 
-
 const answerPoll = async (req: Request<{ slug: string }>, res: Response) => {
     // req.user will be populated if they are logged in (via checkAuthenticate) 
     // req.user will get user id from jwt decode 

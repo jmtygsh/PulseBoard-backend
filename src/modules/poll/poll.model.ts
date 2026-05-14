@@ -11,9 +11,7 @@ import { relations } from "drizzle-orm";
 
 import { usersTable } from "../auth/auth.model.js";
 
-/* =========================
-   POLLS
-========================= */
+//  poll table
 const pollsTable = pgTable("polls", {
     id: uuid("id").defaultRandom().primaryKey(),
 
@@ -37,9 +35,9 @@ const pollsTable = pgTable("polls", {
     updatedAt: timestamp("updated_at").$onUpdate(() => new Date()),
 });
 
-/* =========================
-   QUESTIONS
-========================= */
+
+
+//  question table
 const questionsTable = pgTable("questions", {
     id: uuid("id").defaultRandom().primaryKey(),
     pollId: uuid("poll_id")
@@ -56,9 +54,7 @@ const questionsTable = pgTable("questions", {
     updatedAt: timestamp("updated_at").$onUpdate(() => new Date()),
 });
 
-/* =========================
-   QUESTION OPTIONS
-========================= */
+//  question choice options table
 const questionOptionsTable = pgTable("question_options", {
     id: uuid("id").defaultRandom().primaryKey(),
     questionId: uuid("question_id")
@@ -71,9 +67,7 @@ const questionOptionsTable = pgTable("question_options", {
     updatedAt: timestamp("updated_at").$onUpdate(() => new Date()),
 });
 
-/* =========================
-   RESPONSES
-========================= */
+//  who response table
 const responsesTable = pgTable("responses", {
     id: uuid("id").defaultRandom().primaryKey(),
     pollId: uuid("poll_id").references(() => pollsTable.id).notNull(),
@@ -88,9 +82,7 @@ const responsesTable = pgTable("responses", {
     updatedAt: timestamp("updated_at").$onUpdate(() => new Date()),
 });
 
-/* =========================
-   RESPONSE ANSWERS
-========================= */
+// his response answer store tabole 
 const responseAnswersTable = pgTable("response_answers", {
     id: uuid("id").defaultRandom().primaryKey(),
 
@@ -109,9 +101,8 @@ const responseAnswersTable = pgTable("response_answers", {
     updatedAt: timestamp("updated_at").$onUpdate(() => new Date()),
 });
 
-/* =========================
-   RELATIONS
-========================= */
+
+// relations of poll with questions & question choice options
 const pollsRelations = relations(pollsTable, ({ many }) => ({
     questions: many(questionsTable),
 }));
