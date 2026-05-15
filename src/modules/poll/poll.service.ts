@@ -1,7 +1,6 @@
 import crypto from "crypto";
-import { eq, and, inArray, desc, countDistinct } from "drizzle-orm";
-import { db } from "../../common/config/db.js";
-import { pollsTable, questionsTable, questionOptionsTable, responsesTable, responseAnswersTable } from "../../common/config/schema.js";
+import mongoose from "mongoose";
+import { Poll, Response } from "./poll.model.js";
 import type { CreatePollType, GetPollType, AnswerPollType, GetPollDataType } from "./dto/index.js";
 
 import ApiError from "../../common/utils/api-error.js";
@@ -9,7 +8,7 @@ import { hashToken } from "../../common/utils/hashToken.js";
 import { io } from "../../common/config/socket.io.js";
 
 
-
+// create poll
 const createPollLogic = async ({
     userId,
     title,
@@ -18,112 +17,38 @@ const createPollLogic = async ({
     status,
     expiresAt,
     questions,
-}: CreatePollType) => {
+}: CreatePollType & { userId: string }) => {
 
     // unique sharable url (using userId, timestamp, and random UUID to guarantee uniqueness)
     const shareSlug = hashToken(`${userId}-${Date.now()}-${crypto.randomUUID()}`);
 
-    // opening on database transection method if anything goes failed just rollback
-    const newPoll = await db.transaction(async (tx) => {
-
-        /* =========================
-           1. INSERT POLL
-        ========================= */
-        const [insertedPoll] = await tx
-            .insert(pollsTable)
-            .values({
-                userId,
-                title,
-                description,
-                requireAuth,
-                status,
-                expiresAt: expiresAt ? new Date(expiresAt) : null,
-                publishedAt: status === "published" ? new Date() : null,
-                shareSlug,
-            })
-            .returning({ id: pollsTable.id, shareSlug: pollsTable.shareSlug });
-
-        if (!insertedPoll?.id) {
-            throw ApiError.conflict("Failed to insert poll");
-        }
-
-        /* =========================
-           2. PREPARE QUESTIONS
-        ========================= */
-        const questionsToInsert = questions.map((q, index) => ({
-            pollId: insertedPoll.id,
+    // With Mongoose and our embedded schema, we can insert everything in a single document
+    const newPoll = await Poll.create({
+        userId,
+        title,
+        description,
+        requireAuth,
+        status,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        publishedAt: status === "published" ? new Date() : null,
+        shareSlug,
+        questions: questions.map((q, index) => ({
             questionText: q.questionText,
             isRequired: q.isRequired,
             displayOrder: index + 1,
-        }));
-
-        /* =========================
-           3. BULK INSERT QUESTIONS
-        ========================= */
-        const insertedQuestions = await tx
-            .insert(questionsTable)
-            .values(questionsToInsert)
-            .returning({ id: questionsTable.id, displayOrder: questionsTable.displayOrder });
-
-        if (insertedQuestions.length !== questions.length) {
-            throw ApiError.conflict("Failed to insert all questions");
-        }
-
-        /* =========================
-           4. PREPARE OPTIONS
-        ========================= */
-        const optionsToInsert = insertedQuestions.flatMap(
-            (insertedQuestion) => {
-
-                // Safely match the inserted question with the original question using displayOrder
-                const originalQuestion = questions.find(q => (questions.indexOf(q) + 1) === insertedQuestion.displayOrder);
-
-
-                if (!originalQuestion) {
-                    throw ApiError.conflict(
-                        "Failed to insert all questions & answers"
-                    );
-                }
-
-                return originalQuestion.options.map((optionText, optionIndex) => ({
-                    questionId: insertedQuestion.id,
-                    optionText,
-                    displayOrder: optionIndex + 1,
-                }));
-            }
-        );
-
-        /* =========================
-           5. BULK INSERT OPTIONS
-        ========================= */
-        if (optionsToInsert.length > 0) {
-            await tx
-                .insert(questionOptionsTable)
-                .values(optionsToInsert);
-        }
-
-        return insertedPoll;
+            options: q.options.map((optText, optIndex) => ({
+                optionText: optText,
+                displayOrder: optIndex + 1
+            }))
+        }))
     });
 
     return newPoll;
 };
 
+// to display poll questions
 const getPollBySlugLogic = async ({ slug, userId }: GetPollType) => {
-
-    // I decided to use drizel relation api to arrange nested data in one db query 
-    const poll = await db.query.pollsTable.findFirst({
-        where: (pollsTable, { eq }) => eq(pollsTable.shareSlug, slug),
-        with: {
-            questions: {
-                orderBy: (questionsTable, { asc }) => [asc(questionsTable.displayOrder)],
-                with: {
-                    options: {
-                        orderBy: (questionOptionsTable, { asc }) => [asc(questionOptionsTable.displayOrder)]
-                    }
-                }
-            }
-        }
-    });
+    const poll = await Poll.findOne({ shareSlug: slug }).lean();
 
     if (!poll) {
         throw ApiError.notFound("Poll not found");
@@ -137,23 +62,15 @@ const getPollBySlugLogic = async ({ slug, userId }: GetPollType) => {
     return poll;
 };
 
-const answerPollBySlugLogic = async ({ slug, answers, anonymousId, userId }: AnswerPollType & { slug: string }) => {
 
+// to get poll answer from user
+const answerPollBySlugLogic = async ({ slug, answers, anonymousId, userId }: AnswerPollType & { slug: string }) => {
     if (!slug) throw ApiError.badRequest("Poll slug is required");
 
     // Require either a logged-in user OR an anonymousId
     if (!userId && !anonymousId) throw ApiError.badRequest("You must provide ID to answer this poll.");
 
-
-    // Fetch only the specific poll data we need based on the slug
-    const poll = await db.query.pollsTable.findFirst({
-        where: (pollsTable, { eq }) => eq(pollsTable.shareSlug, slug),
-        with: {
-            questions: {
-                columns: { id: true, isRequired: true }
-            }
-        }
-    });
+    const poll = await Poll.findOne({ shareSlug: slug });
 
     if (!poll) throw ApiError.notFound("Poll not found");
 
@@ -163,75 +80,54 @@ const answerPollBySlugLogic = async ({ slug, answers, anonymousId, userId }: Ans
     // Check if the poll is expired
     if (poll.status === "expired" && poll.expiresAt) throw ApiError.conflict(`Poll has expired on ${poll.expiresAt.toLocaleString()}. cannot answer.`);
 
-    // Verify that all required questions have been answered
-    const requiredQuestions = poll.questions.filter(q => q.isRequired);
-    const answeredQuestionIds = Object.keys(answers);
-    const missingQuestions = requiredQuestions.filter(q => !answeredQuestionIds.includes(q.id));
-
-    if (missingQuestions.length > 0) {
-        throw ApiError.badRequest("Please answer all required questions.");
-    }
 
     // Check for duplicate response
-    const existingResponse = await db
-        .select({ id: responsesTable.id })
-        .from(responsesTable)
-        .where(
-            and(
-                eq(responsesTable.pollId, poll.id),
-                userId ? eq(responsesTable.userId, userId) : eq(responsesTable.anonymousId, anonymousId!)
-            )
-        )
-        .limit(1);
+    const existingResponse = await Response.findOne({
+        pollId: poll._id,
+        [userId ? 'userId' : 'anonymousId']: userId || anonymousId,
+    });
 
-    if (existingResponse.length > 0) {
+    if (existingResponse) {
         throw ApiError.conflict("You have already answered this poll.");
     }
 
-    // Insert response and answers in a transaction
-    await db.transaction(async (tx) => {
-        // 1. Insert the response record
-        const [insertedResponse] = await tx
-            .insert(responsesTable)
-            .values({
-                pollId: poll.id,
-                userId: userId || null,
-                anonymousId: userId ? null : anonymousId,
-            })
-            .returning({ id: responsesTable.id });
+    // Validate that all submitted answers belong to this poll
+    const validQuestionsMap = new Map(
+        poll.questions.map(q => [
+            q._id.toString(),
+            new Set(q.options.map(opt => opt._id.toString()))
+        ])
+    );
 
-        if (!insertedResponse?.id) {
-            throw ApiError.conflict("Failed to record your response.");
-        }
-
-        // 2. Prepare the answers array
-        // transform answers to array of object
-        const answersToInsert = Object.entries(answers).map(([questionId, selectedOptionId]) => ({
-            responseId: insertedResponse.id,
-            questionId,
-            selectedOptionId,
-        }));
-
-        // 3. Bulk insert the answers
-        if (answersToInsert.length > 0) {
-            await tx.insert(responseAnswersTable).values(answersToInsert);
-        }
+    const isValid = Object.entries(answers).every(([questionId, selectedOptionId]) => {
+        const validOptions = validQuestionsMap.get(questionId);
+        return validOptions && validOptions.has(selectedOptionId);
     });
+
+    if (!isValid) {
+        throw ApiError.badRequest("One or more submitted answers contain invalid questions or options for this poll.");
+    }
+
+    // Prepare the answers array for Mongoose
+    const answersToInsert = Object.entries(answers).map(([questionId, selectedOptionId]) => ({
+        questionId,
+        selectedOptionId,
+    }));
+
+    const newResponse = await Response.create({
+        pollId: poll._id,
+        ...(userId && { userId }),
+        ...(anonymousId && { anonymousId }),
+        answers: answersToInsert,
+    });
+
 
     // After successful submission, broadcast only the new answer data (Delta Update)
     if (io) {
         try {
-            // Transform answers object into an array of { questionId, optionId } for easier frontend mapping
-            const formattedAnswers = Object.entries(answers).map(([questionId, selectedOptionId]) => ({
-                questionId,
-                selectedOptionId
-            }));
-
             const deltaUpdate = {
                 isAuth: !!userId,
-                // Provide the specific ID used for this vote (either userId or anonymousId)
-                voterId: userId || anonymousId,
-                answers: formattedAnswers
+                data: newResponse.toJSON()
             };
 
             // Push the incremental update to anyone listening in this poll's room
@@ -240,96 +136,81 @@ const answerPollBySlugLogic = async ({ slug, answers, anonymousId, userId }: Ans
             console.error("Failed to emit socket event:", error);
         }
     }
+
 };
 
+// to get poll analytics/results
 const getPollAnalyticsLogic = async ({ slug }: { slug: string }) => {
     if (!slug) throw ApiError.badRequest("Poll slug is required");
 
-
-    //  fetch poll skeleton
-    const poll = await db.query.pollsTable.findFirst({
-        where: (pollsTable, { eq }) => eq(pollsTable.shareSlug, slug),
-        with: {
-            questions: {
-                orderBy: (questionsTable, { asc }) => [asc(questionsTable.displayOrder)],
-                with: {
-                    options: {
-                        orderBy: (questionOptionsTable, { asc }) => [asc(questionOptionsTable.displayOrder)]
-                    }
-                }
-            }
-        }
-    });
-
+    // Fetch poll skeleton
+    const poll = await Poll.findOne({ shareSlug: slug });
     if (!poll) throw ApiError.notFound("Poll not found");
 
-    //  fetch responses
-    const responses = await db
-        .select({
-            id: responsesTable.id,
-            userId: responsesTable.userId
-        })
-        .from(responsesTable)
-        .where(eq(responsesTable.pollId, poll.id));
+    // Aggregation pipeline to calculate stats
+    const aggregationResult = await Response.aggregate([
+        { $match: { pollId: poll._id } },
+        {
+            $facet: {
+                // 1. Calculate overall response stats
+                overallStats: [
+                    {
+                        $group: {
+                            _id: null,
+                            total: { $sum: 1 },
+                            auth: { $sum: { $cond: [{ $ifNull: ["$userId", false] }, 1, 0] } },
+                            ano: { $sum: { $cond: [{ $ifNull: ["$userId", false] }, 0, 1] } }
+                        }
+                    }
+                ],
+                // 2. Unwind answers to calculate stats per option
+                optionStats: [
+                    { $unwind: "$answers" },
+                    {
+                        $group: {
+                            _id: "$answers.selectedOptionId",
+                            totalVotes: { $sum: 1 },
+                            authVotes: { $sum: { $cond: [{ $ifNull: ["$userId", false] }, 1, 0] } },
+                            anoVotes: { $sum: { $cond: [{ $ifNull: ["$userId", false] }, 0, 1] } }
+                        }
+                    }
+                ]
+            }
+        }
+    ]);
 
-    //  fetch answers
-    const responseIds = responses.map((r) => r.id);
+    const stats = aggregationResult[0];
+    const overallStats = stats.overallStats[0] || { total: 0, auth: 0, ano: 0 };
 
-    let answers: { selectedOptionId: string, responseId: string }[] = [];
+    // Convert optionStats array to a map for quick lookup O(1)
+    const optionStatsMap = new Map(
+        stats.optionStats.map((stat: any) => [
+            stat._id.toString(),
+            { total: stat.totalVotes, auth: stat.authVotes, ano: stat.anoVotes }
+        ])
+    );
 
-    if (responseIds.length > 0) {
-        answers = await db
-            .select({
-                selectedOptionId: responseAnswersTable.selectedOptionId,
-                responseId: responseAnswersTable.responseId
-            })
-            .from(responseAnswersTable)
-            .where(inArray(responseAnswersTable.responseId, responseIds));
-    }
-
-    //  calculate stats
-    const totalResponses = responses.length;
-    const authResponses = responses.filter((r) => r.userId !== null).length;
-    const anoResponses = responses.filter((r) => r.userId === null).length;
-
-    //  format results
+    // Format results matching original structure
     const formattedResults = {
-        pollId: poll.id,
+        pollId: poll._id,
         title: poll.title,
         status: poll.status,
         responses: {
-            total: totalResponses,
-            auth: authResponses,
-            ano: anoResponses
+            total: overallStats.total,
+            auth: overallStats.auth,
+            ano: overallStats.ano
         },
         questions: poll.questions.map((q) => {
             return {
-                id: q.id,
+                id: q._id,
                 questionText: q.questionText,
                 options: q.options.map((opt) => {
-
-                    // Filter answers for this specific option
-                    const optionAnswers = answers.filter((a) => a.selectedOptionId === opt.id);
-
-                    // Count auth vs ano votes by checking the response it belongs to
-                    const authVotes = optionAnswers.filter((a) => {
-                        const response = responses.find((r) => r.id === a.responseId);
-                        return response && response.userId !== null;
-                    }).length;
-
-                    const anoVotes = optionAnswers.filter((a) => {
-                        const response = responses.find((r) => r.id === a.responseId);
-                        return response && response.userId === null;
-                    }).length;
+                    const votes = optionStatsMap.get(opt._id.toString()) || { total: 0, auth: 0, ano: 0 };
 
                     return {
-                        id: opt.id,
+                        id: opt._id,
                         optionText: opt.optionText,
-                        voteCount: {
-                            total: optionAnswers.length,
-                            auth: authVotes,
-                            ano: anoVotes
-                        }
+                        voteCount: votes
                     };
                 })
             };
@@ -339,35 +220,46 @@ const getPollAnalyticsLogic = async ({ slug }: { slug: string }) => {
     return formattedResults;
 };
 
-const getPollDataLogic = async ({ userId }: GetPollDataType) => {
 
+// to show all polls created by user to own data
+const getPollDataLogic = async ({ userId }: GetPollDataType) => {
     if (!userId) throw ApiError.unauthorized("User ID is required");
 
     // Fetch polls CREATED by the user and count total responses for each
-    const polls = await db
-        .select({
-            id: pollsTable.id,
-            title: pollsTable.title,
-            description: pollsTable.description,
-            status: pollsTable.status,
-            requireAuth: pollsTable.requireAuth,
-            expiresAt: pollsTable.expiresAt,
-            publishedAt: pollsTable.publishedAt,
-            shareSlug: pollsTable.shareSlug,
-            createdAt: pollsTable.createdAt,
-            updatedAt: pollsTable.updatedAt,
-            // Use countDistinct to prevent cross-join multiplication
-            responseCount: countDistinct(responsesTable.id),
-            questionCount: countDistinct(questionsTable.id),
-        })
-        .from(pollsTable)
-        .leftJoin(responsesTable, eq(pollsTable.id, responsesTable.pollId))
-        .leftJoin(questionsTable, eq(pollsTable.id, questionsTable.pollId))
-        .where(eq(pollsTable.userId, userId))
-        .groupBy(pollsTable.id)
-        .orderBy(desc(pollsTable.createdAt));
+    const polls = await Poll.aggregate([
+        { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+        {
+            $lookup: {
+                from: "responses", // Mongoose collection name for Response model
+                localField: "_id",
+                foreignField: "pollId",
+                as: "pollResponses"
+            }
+        },
+        {
+            $project: {
+                id: "$_id",
+                title: 1,
+                description: 1,
+                status: 1,
+                requireAuth: 1,
+                expiresAt: 1,
+                publishedAt: 1,
+                shareSlug: 1,
+                createdAt: 1,
+                updatedAt: 1,
+                responseCount: { $size: "$pollResponses" },
+                questionCount: { $size: "$questions" } // since questions is embedded, $size works directly on it
+            }
+        },
+        { $sort: { createdAt: -1 } }
+    ]);
 
-    return polls;
+    // Format the _id to id to match the expected return type
+    return polls.map(poll => ({
+        ...poll,
+        id: poll._id.toString(),
+    }));
 };
 
 export { createPollLogic, getPollBySlugLogic, answerPollBySlugLogic, getPollAnalyticsLogic, getPollDataLogic };

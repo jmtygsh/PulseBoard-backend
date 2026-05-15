@@ -1,5 +1,12 @@
-import 'dotenv/config';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import * as schema from './schema.js';
+import mongoose from "mongoose";
 
-export const db = drizzle(process.env.DATABASE_URL!, { schema });
+
+const connectDB = async () => {
+    if (!process.env.MONGODB_URI) {
+        throw new Error("MONGODB_URI is not defined in the environment variables");
+    }
+    const conn = await mongoose.connect(process.env.MONGODB_URI);
+    console.log(`MongoDB connected: ${conn.connection.host}`)
+}
+
+export default connectDB

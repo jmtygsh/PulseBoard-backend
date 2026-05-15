@@ -1,16 +1,8 @@
 
-// import third party libraries
-import { eq } from "drizzle-orm";
-
-
-// import project files 
-import { db } from "../../common/config/db.js";
-import { authProvidersTable, usersTable } from "../../common/config/schema.js";
+import { User } from "./auth.model.js";
 import {
     generateAccessToken,
     generateRefreshToken,
-    verifyRefreshToken,
-    generateResetToken,
 } from "../../common/utils/jwt.utils.js";
 
 // import {
@@ -23,75 +15,38 @@ import ApiError from "../../common/utils/api-error.js";
 import type { SocialAuthType } from "./dto/dto.register.js";
 import { hashToken } from "../../common/utils/hashToken.js";
 
-
-
 const socialAuthLogic = async (socialProfileData: SocialAuthType) => {
     const { email, name, providerUserId, avatarUrl } = socialProfileData;
 
     // 1. Check if the user already exists by email
-    const [existingUser] = await db
-        .select()
-        .from(usersTable)
-        .where(eq(usersTable.email, email))
-        .limit(1);
+    let user = await User.findOne({ email });
 
-    let user;
-
-    if (existingUser) {
-        // User exists, they are logging in
-        user = existingUser;
-    } else {
-        // 2. User doesn't exist, create user and link provider inside a transaction
-        user = await db.transaction(async (tx) => {
-            // Create the user
-            const [newUser] = await tx
-                .insert(usersTable)
-                .values({
-                    name: name,
-                    email: email,
-                    avatarUrl: avatarUrl,
-                    isVerified: true,
-                })
-                .returning({
-                    id: usersTable.id,
-                    name: usersTable.name,
-                    email: usersTable.email,
-                    createdAt: usersTable.createdAt,
-                });
-
-            if (!newUser) {
-                throw ApiError.badRequest("Failed to create user account.");
-            }
-
-            // Link them to the Google Provider table
-            await tx.insert(authProvidersTable).values({
-                userId: newUser.id,
-                provider: "google",
-                providerUserId: providerUserId,
-            });
-
-            return newUser;
+    if (!user) {
+        // 2. User doesn't exist, create user
+        user = await User.create({
+            name: name,
+            email: email,
+            ...(avatarUrl && { avatarUrl }), // spread operator to store everything
+            isVerified: true,
+            provider: "google",
+            providerUserId: providerUserId,
         });
+
+        if (!user) {
+            throw ApiError.badRequest("Failed to create user account.");
+        }
     }
 
     // 3. Generate tokens for both login and register flows
-    const accessToken = generateAccessToken({ id: user.id });
-    const refreshToken = generateRefreshToken({ id: user.id });
+    const userIdStr = user._id.toString();
+    const accessToken = generateAccessToken({ id: userIdStr });
+    const refreshToken = generateRefreshToken({ id: userIdStr });
 
-
-    await db
-        .update(usersTable)
-        .set({ refreshToken: hashToken(refreshToken) })
-        .where(eq(usersTable.id, user.id))
-        .returning({
-            id: usersTable.id,
-            name: usersTable.name,
-            email: usersTable.email,
-            refreshToken: usersTable.refreshToken,
-        });
+    user.refreshToken = hashToken(refreshToken);
+    await user.save();
 
     return {
-        user: { id: user.id, name: user.name, email: user.email },
+        user: { id: userIdStr, name: user.name, email: user.email },
         accessToken,
         refreshToken
     };

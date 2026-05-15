@@ -38,7 +38,7 @@ const answerPoll = async (req: Request<{ slug: string }>, res: Response) => {
         });
     ApiResponse.ok(
         res,
-        "Poll answered successfully submitted",
+        "Poll answered successfully",
         poll
     );
 };
