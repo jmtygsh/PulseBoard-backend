@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import mongoose from "mongoose";
-import { Poll, Response } from "./poll.model.js";
+import { Poll, Response, PublicResult } from "./poll.model.js";
 import type { CreatePollType, GetPollType, AnswerPollType, GetPollDataType } from "./dto/index.js";
 
 import ApiError from "../../common/utils/api-error.js";
@@ -48,7 +48,7 @@ const createPollLogic = async ({
 
 // to display poll questions
 const getPollBySlugLogic = async ({ slug, userId }: GetPollType) => {
-    const poll = await Poll.findOne({ shareSlug: slug }).lean();
+    const poll = await Poll.findOne({ shareSlug: slug, isDeleted: false }).lean();
 
     if (!poll) {
         throw ApiError.notFound("Poll not found");
@@ -70,15 +70,22 @@ const answerPollBySlugLogic = async ({ slug, answers, anonymousId, userId }: Ans
     // Require either a logged-in user OR an anonymousId
     if (!userId && !anonymousId) throw ApiError.badRequest("You must provide ID to answer this poll.");
 
-    const poll = await Poll.findOne({ shareSlug: slug });
+    const poll = await Poll.findOne({ shareSlug: slug, isDeleted: false });
 
     if (!poll) throw ApiError.notFound("Poll not found");
 
     // Verify Auth (if the poll requireAuth is true so, user id have to be provided)
     if (poll.requireAuth && !userId) throw ApiError.unauthorized("You must be logged in to answer this poll.");
 
-    // Check if the poll is expired
-    if (poll.status === "expired" && poll.expiresAt) throw ApiError.conflict(`Poll has expired on ${poll.expiresAt.toLocaleString()}. cannot answer.`);
+    // Check if the poll is dynamically expired (even if status is not 'expired')
+    if (poll.expiresAt && new Date() > poll.expiresAt) {
+        throw ApiError.conflict(`Poll has expired on ${poll.expiresAt.toLocaleString()}. Cannot answer.`);
+    }
+
+    // Check if the poll is explicitly marked as expired
+    if (poll.status === "expired") {
+        throw ApiError.conflict(`Poll is marked as expired. Cannot answer.`);
+    }
 
 
     // Check for duplicate response
@@ -144,7 +151,7 @@ const getPollAnalyticsLogic = async ({ slug }: { slug: string }) => {
     if (!slug) throw ApiError.badRequest("Poll slug is required");
 
     // Fetch poll skeleton
-    const poll = await Poll.findOne({ shareSlug: slug });
+    const poll = await Poll.findOne({ shareSlug: slug, isDeleted: false });
     if (!poll) throw ApiError.notFound("Poll not found");
 
     // Aggregation pipeline to calculate stats
@@ -227,7 +234,7 @@ const getPollDataLogic = async ({ userId }: GetPollDataType) => {
 
     // Fetch polls CREATED by the user and count total responses for each
     const polls = await Poll.aggregate([
-        { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+        { $match: { userId: new mongoose.Types.ObjectId(userId), isDeleted: false } },
         {
             $lookup: {
                 from: "responses", // Mongoose collection name for Response model
@@ -262,4 +269,91 @@ const getPollDataLogic = async ({ userId }: GetPollDataType) => {
     }));
 };
 
-export { createPollLogic, getPollBySlugLogic, answerPollBySlugLogic, getPollAnalyticsLogic, getPollDataLogic };
+const deletePollLogic = async ({ pollId, userId }: { pollId: string; userId: string }) => {
+    if (!pollId || !userId) throw ApiError.badRequest("Poll ID and User ID are required");
+
+    const poll = await Poll.findOne({ _id: pollId, userId, isDeleted: false });
+    if (!poll) throw ApiError.notFound("Poll not found or unauthorized");
+
+    poll.isDeleted = true;
+    await poll.save();
+
+    return { success: true, message: "Poll successfully deleted" };
+};
+
+
+const makePollPublicLogic = async ({ pollId, userId }: { pollId: string; userId: string }) => {
+    if (!pollId || !userId) throw ApiError.badRequest("Poll ID and User ID are required");
+
+    // Verify the user owns the poll and it's not deleted
+    const poll = await Poll.findOne({ _id: pollId, userId, isDeleted: false });
+    if (!poll) throw ApiError.notFound("Poll not found or unauthorized");
+
+    // Check if it's already public
+    const existingPublic = await PublicResult.findOne({ pollId: poll._id });
+    if (existingPublic) {
+        if (existingPublic.isDeleted) {
+            // Restore it if it was soft-deleted
+            existingPublic.isDeleted = false;
+            await existingPublic.save();
+            return { success: true, message: "Poll results are now public again" };
+        }
+        throw ApiError.conflict("Poll results are already public");
+    }
+
+    // Create a new public result entry
+    await PublicResult.create({ pollId: poll._id });
+
+    return { success: true, message: "Poll results are now public" };
+};
+
+const getPublicPollsLogic = async ({ page = 1, limit = 9 }: { page?: number; limit?: number }) => {
+    const skip = (page - 1) * limit;
+
+    // 1. Fetch public result entries
+    const publicResults = await PublicResult.find({ isDeleted: false })
+        .populate({
+            path: 'pollId',
+            match: { isDeleted: false }, // Ensure the actual poll isn't deleted
+            select: 'title description status shareSlug createdAt expiresAt requireAuth questions',
+        })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+    // 2. Filter out any public results where the populated pollId is null (e.g. poll was soft-deleted)
+    const validPublicResults = publicResults.filter(pr => pr.pollId != null);
+
+    // 3. For each valid poll, count the number of responses to show on the card
+    const formattedPolls = await Promise.all(validPublicResults.map(async (pr: any) => {
+        const poll = pr.pollId;
+        const responseCount = await Response.countDocuments({ pollId: poll._id });
+        
+        return {
+            id: poll._id.toString(),
+            title: poll.title,
+            description: poll.description,
+            status: poll.status,
+            shareSlug: poll.shareSlug,
+            createdAt: poll.createdAt,
+            expiresAt: poll.expiresAt,
+            requireAuth: poll.requireAuth,
+            questionCount: poll.questions?.length || 0,
+            responseCount
+        };
+    }));
+
+    // 4. Get total count for pagination
+    const totalCount = await PublicResult.countDocuments({ isDeleted: false });
+    const totalPages = Math.ceil(totalCount / limit);
+
+    return {
+        polls: formattedPolls,
+        currentPage: page,
+        totalPages,
+        totalCount
+    };
+};
+
+export { createPollLogic, getPollBySlugLogic, answerPollBySlugLogic, getPollAnalyticsLogic, getPollDataLogic, deletePollLogic, makePollPublicLogic, getPublicPollsLogic };

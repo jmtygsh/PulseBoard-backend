@@ -3,9 +3,6 @@ import ApiResponse from "../../common/utils/api-response.js";
 import * as pollService from "./poll.service.js";
 
 const createPoll = async (req: Request, res: Response) => {
-
-    console.log(" [log]:create poll request body [req.body]:", req.body);
-
     const user = await pollService.createPollLogic({ ...req.body, userId: req.user });
     ApiResponse.created(
         res,
@@ -64,4 +61,37 @@ const getPollData = async (req: Request, res: Response) => {
     );
 };
 
-export { createPoll, getPollBySlug, answerPoll, getPollAnalytics, getPollData };
+const deletePoll = async (req: Request<{ id: string }>, res: Response) => {
+    const result = await pollService.deletePollLogic({ pollId: req.params.id, userId: req.user! });
+
+    ApiResponse.ok(
+        res,
+        result.message,
+        null
+    );
+};
+
+const makePollPublic = async (req: Request<{ id: string }>, res: Response) => {
+    const result = await pollService.makePollPublicLogic({ pollId: req.params.id, userId: req.user! });
+
+    ApiResponse.ok(
+        res,
+        result.message,
+        null
+    );
+};
+
+const getPublicPolls = async (req: Request, res: Response) => {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 9;
+
+    const result = await pollService.getPublicPollsLogic({ page, limit });
+
+    ApiResponse.ok(
+        res,
+        "Public polls fetched successfully",
+        result
+    );
+};
+
+export { createPoll, getPollBySlug, answerPoll, getPollAnalytics, getPollData, deletePoll, makePollPublic, getPublicPolls };

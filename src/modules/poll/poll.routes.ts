@@ -21,4 +21,14 @@ router.get("/analytics/:slug", checkAuthenticate, controller.getPollAnalytics);
 // Fetch user's created polls
 router.get("/data/list", checkAuthenticate, protectedRoute, controller.getPollData);
 
+// Delete a poll (Soft Delete)
+router.delete("/:id", checkAuthenticate, protectedRoute, controller.deletePoll);
+
+
+// Make poll results public
+router.post("/public/:id", checkAuthenticate, protectedRoute, controller.makePollPublic);
+
+// Get paginated public polls
+router.get("/public", controller.getPublicPolls);
+
 export default router;

@@ -29,6 +29,7 @@ const pollSchema = new mongoose.Schema(
         expiresAt: { type: Date },
         publishedAt: { type: Date },
         shareSlug: { type: String, required: true, unique: true, maxlength: 255 },
+        isDeleted: { type: Boolean, default: false },
         questions: [questionSchema], // Nested as JSON array
     },
     { timestamps: true }
@@ -67,7 +68,22 @@ const responseSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
+// Public Result Schema (Stores polls that have made their results public)
+const publicResultSchema = new mongoose.Schema(
+    {
+        pollId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Poll",
+            required: true,
+            unique: true, // A poll should only have one public result entry
+        },
+        isDeleted: { type: Boolean, default: false }, // Compatible with soft-delete feature
+    },
+    { timestamps: true }
+);
+
 const Poll = mongoose.model("Poll", pollSchema);
 const Response = mongoose.model("Response", responseSchema);
+const PublicResult = mongoose.model("PublicResult", publicResultSchema);
 
-export { Poll, Response };
+export { Poll, Response, PublicResult };

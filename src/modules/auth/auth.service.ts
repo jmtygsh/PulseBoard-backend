@@ -11,10 +11,10 @@ import {
   generateResetToken,
 } from "../../common/utils/jwt.utils.js";
 
-// import {
-//   sendVerificationEmail,
-//   sendResetPasswordEmail,
-// } from "../../common/config/email.js";
+import {
+  sendVerificationEmail,
+  sendResetPasswordEmail,
+} from "../../common/config/email.js";
 
 // import constants
 import ApiError from "../../common/utils/api-error.js";
@@ -29,7 +29,7 @@ const register = async ({ name, email, password }: RegisterUserType) => {
 
   const { rawToken, hashedToken } = generateResetToken();
 
-  console.log('Verification token:', rawToken);
+  await sendVerificationEmail(email, rawToken);
 
   const newUser = await User.create({
     name,
@@ -143,7 +143,7 @@ const forgotPassword = async ({ email }: ForgotPasswordType) => {
 
   const { rawToken, hashedToken } = generateResetToken();
 
-  console.log('Reset password token:', rawToken);
+  await sendResetPasswordEmail(email, rawToken);
 
   user.resetPasswordToken = hashedToken;
   user.resetPasswordExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
