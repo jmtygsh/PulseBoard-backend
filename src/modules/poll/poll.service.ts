@@ -1,8 +1,8 @@
 import crypto from "crypto";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, desc, countDistinct } from "drizzle-orm";
 import { db } from "../../common/config/db.js";
 import { pollsTable, questionsTable, questionOptionsTable, responsesTable, responseAnswersTable } from "../../common/config/schema.js";
-import type { CreatePollType, GetPollType, AnswerPollType } from "./dto/index.js";
+import type { CreatePollType, GetPollType, AnswerPollType, GetPollDataType } from "./dto/index.js";
 
 import ApiError from "../../common/utils/api-error.js";
 import { hashToken } from "../../common/utils/hashToken.js";
@@ -63,7 +63,7 @@ const createPollLogic = async ({
         const insertedQuestions = await tx
             .insert(questionsTable)
             .values(questionsToInsert)
-            .returning({ id: questionsTable.id });
+            .returning({ id: questionsTable.id, displayOrder: questionsTable.displayOrder });
 
         if (insertedQuestions.length !== questions.length) {
             throw ApiError.conflict("Failed to insert all questions");
@@ -73,9 +73,10 @@ const createPollLogic = async ({
            4. PREPARE OPTIONS
         ========================= */
         const optionsToInsert = insertedQuestions.flatMap(
-            (insertedQuestion, questionIndex) => {
+            (insertedQuestion) => {
 
-                const originalQuestion = questions[questionIndex];
+                // Safely match the inserted question with the original question using displayOrder
+                const originalQuestion = questions.find(q => (questions.indexOf(q) + 1) === insertedQuestion.displayOrder);
 
 
                 if (!originalQuestion) {
@@ -145,29 +146,31 @@ const answerPollBySlugLogic = async ({ slug, answers, anonymousId, userId }: Ans
 
 
     // Fetch only the specific poll data we need based on the slug
-    const [poll] = await db
-        .select({
-            id: pollsTable.id,
-            requireAuth: pollsTable.requireAuth,
-            status: pollsTable.status,
-            expiresAt: pollsTable.expiresAt
-        })
-        .from(pollsTable)
-        .where(eq(pollsTable.shareSlug, slug))
-        .limit(1);
+    const poll = await db.query.pollsTable.findFirst({
+        where: (pollsTable, { eq }) => eq(pollsTable.shareSlug, slug),
+        with: {
+            questions: {
+                columns: { id: true, isRequired: true }
+            }
+        }
+    });
 
     if (!poll) throw ApiError.notFound("Poll not found");
-
 
     // Verify Auth (if the poll requireAuth is true so, user id have to be provided)
     if (poll.requireAuth && !userId) throw ApiError.unauthorized("You must be logged in to answer this poll.");
 
-
     // Check if the poll is expired
     if (poll.status === "expired" && poll.expiresAt) throw ApiError.conflict(`Poll has expired on ${poll.expiresAt.toLocaleString()}. cannot answer.`);
 
+    // Verify that all required questions have been answered
+    const requiredQuestions = poll.questions.filter(q => q.isRequired);
+    const answeredQuestionIds = Object.keys(answers);
+    const missingQuestions = requiredQuestions.filter(q => !answeredQuestionIds.includes(q.id));
 
-    // if question has required is true, then answer length much be same with question length (later add)
+    if (missingQuestions.length > 0) {
+        throw ApiError.badRequest("Please answer all required questions.");
+    }
 
     // Check for duplicate response
     const existingResponse = await db
@@ -336,4 +339,35 @@ const getPollAnalyticsLogic = async ({ slug }: { slug: string }) => {
     return formattedResults;
 };
 
-export { createPollLogic, getPollBySlugLogic, answerPollBySlugLogic, getPollAnalyticsLogic };
+const getPollDataLogic = async ({ userId }: GetPollDataType) => {
+
+    if (!userId) throw ApiError.unauthorized("User ID is required");
+
+    // Fetch polls CREATED by the user and count total responses for each
+    const polls = await db
+        .select({
+            id: pollsTable.id,
+            title: pollsTable.title,
+            description: pollsTable.description,
+            status: pollsTable.status,
+            requireAuth: pollsTable.requireAuth,
+            expiresAt: pollsTable.expiresAt,
+            publishedAt: pollsTable.publishedAt,
+            shareSlug: pollsTable.shareSlug,
+            createdAt: pollsTable.createdAt,
+            updatedAt: pollsTable.updatedAt,
+            // Use countDistinct to prevent cross-join multiplication
+            responseCount: countDistinct(responsesTable.id),
+            questionCount: countDistinct(questionsTable.id),
+        })
+        .from(pollsTable)
+        .leftJoin(responsesTable, eq(pollsTable.id, responsesTable.pollId))
+        .leftJoin(questionsTable, eq(pollsTable.id, questionsTable.pollId))
+        .where(eq(pollsTable.userId, userId))
+        .groupBy(pollsTable.id)
+        .orderBy(desc(pollsTable.createdAt));
+
+    return polls;
+};
+
+export { createPollLogic, getPollBySlugLogic, answerPollBySlugLogic, getPollAnalyticsLogic, getPollDataLogic };

@@ -26,8 +26,6 @@ import ApiError from "../../common/utils/api-error.js";
 import type { RegisterUserType, LoginUserType, RefreshTokenType, LogoutUserType, VerifyEmailType, ForgotPasswordType, ResetPasswordType } from "./dto/index.js";
 
 
-
-
 const register = async ({ name, email, password }: RegisterUserType) => {
   // 1. Check if email already exists
   const existingUser = await db
@@ -159,10 +157,19 @@ const refresh = async ({ token }: RefreshTokenType) => {
     throw ApiError.unauthorized("Invalid refresh token — please log in again");
   }
 
-  // 4. Generate Tokens
+  // 4. Generate Tokens (Rolling Sessions: generate both access and refresh tokens)
   const accessToken = generateAccessToken({ id: user.id });
+  const newRefreshToken = generateRefreshToken({ id: user.id });
 
-  return { accessToken };
+  // 5. Update refresh token in DB to prevent reuse of the old one
+  await db
+    .update(usersTable)
+    .set({ refreshToken: hashToken(newRefreshToken) })
+    .where(eq(usersTable.id, user.id));
+
+  console.log(" [log]:refresh token generated...");
+
+  return { accessToken, refreshToken: newRefreshToken };
 };
 
 const logout = async ({ userId }: LogoutUserType) => {

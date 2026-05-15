@@ -18,4 +18,7 @@ router.post("/answers/:slug", checkAuthenticate, validateMiddleware(AnswerPollSc
 // Fetch poll analytics/results
 router.get("/analytics/:slug", checkAuthenticate, controller.getPollAnalytics);
 
+// Fetch user's created polls
+router.get("/data/list", checkAuthenticate, protectedRoute, controller.getPollData);
+
 export default router;

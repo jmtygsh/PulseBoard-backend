@@ -8,19 +8,45 @@ export interface TokenPayload extends jwt.JwtPayload {
 }
 
 const generateAccessToken = (payload: TokenPayload) => {
-  return jwt.sign(payload, process.env.JWT_ACCESS_EXPIRES_IN!, { expiresIn: '15m' });
+  // Check if JWT_ACCESS_SECRET is set
+  if (!process.env.JWT_ACCESS_SECRET) {
+    throw new Error("JWT_ACCESS_SECRET environment variable is not set");
+  }
+
+  // @ts-ignore
+  return jwt.sign(payload, process.env.JWT_ACCESS_SECRET, {
+    expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "15m",
+  });
 };
 
 const verifyAccessToken = (token: string): TokenPayload => {
-  return jwt.verify(token, process.env.JWT_ACCESS_SECRET!) as TokenPayload;
+  // Check if JWT_ACCESS_SECRET is set
+  if (!process.env.JWT_ACCESS_SECRET) {
+    throw new Error("JWT_ACCESS_SECRET environment variable is not set");
+  }
+
+  return jwt.verify(token, process.env.JWT_ACCESS_SECRET) as TokenPayload;
 };
 
 const generateRefreshToken = (payload: TokenPayload) => {
-  return jwt.sign(payload, process.env.JWT_REFRESH_EXPIRES_IN!, { expiresIn: '7d' });
+  // Check if JWT_REFRESH_SECRET is set
+  if (!process.env.JWT_REFRESH_SECRET) {
+    throw new Error("JWT_REFRESH_SECRET environment variable is not set");
+  }
+
+  // @ts-ignore
+  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
+    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
+  });
 };
 
 const verifyRefreshToken = (token: string): TokenPayload => {
-  return jwt.verify(token, process.env.JWT_REFRESH_SECRET!) as TokenPayload;
+  // Check if JWT_REFRESH_SECRET is set
+  if (!process.env.JWT_REFRESH_SECRET) {
+    throw new Error("JWT_REFRESH_SECRET environment variable is not set");
+  }
+
+  return jwt.verify(token, process.env.JWT_REFRESH_SECRET) as TokenPayload;
 };
 
 const generateResetToken = () => {

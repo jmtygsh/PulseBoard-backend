@@ -14,6 +14,7 @@ import pollRoute from "./modules/poll/poll.routes.js";
 // file import 
 import ApiError from "./common/utils/api-error.js";
 import { corsConfig } from "./common/config/cors.config.js";
+import { globalErrorHandler } from "./common/middleware/validate.middleware.js";
 
 const app: Express = express();
 
@@ -23,7 +24,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-app.use("/health", (req, res) => {
+app.use("/health", (_, res) => {
     res.status(200).json({ message: "Healthy", success: true, code: 200 });
 });
 
@@ -31,10 +32,13 @@ app.use("/api/auth", authRoute);
 app.use("/api/polls", pollRoute);
 
 // Catch-all for undefined routes
-app.all("{*path}", (req, res) => {
+app.all("{*path}", (req, _) => {
     throw ApiError.notFound(`Route ${req.originalUrl} not found`);
 });
 
 
+
+// Global error handling middleware
+app.use(globalErrorHandler);
 
 export default app;

@@ -4,9 +4,9 @@ import * as pollService from "./poll.service.js";
 
 const createPoll = async (req: Request, res: Response) => {
 
-    // console.log(req.body);
+    console.log(" [log]:create poll request body [req.body]:", req.body);
 
-    const user = await pollService.createPollLogic(req.body);
+    const user = await pollService.createPollLogic({ ...req.body, userId: req.user });
     ApiResponse.created(
         res,
         "Poll created successfully",
@@ -53,5 +53,15 @@ const getPollAnalytics = async (req: Request<{ slug: string }>, res: Response) =
     );
 };
 
+const getPollData = async (req: Request, res: Response) => {
+    // Validate user ID is provided via the validated req.body
+    const polls = await pollService.getPollDataLogic({ userId: req.user! });
 
-export { createPoll, getPollBySlug, answerPoll, getPollAnalytics };
+    ApiResponse.ok(
+        res,
+        "User polls fetched successfully",
+        polls
+    );
+};
+
+export { createPoll, getPollBySlug, answerPoll, getPollAnalytics, getPollData };

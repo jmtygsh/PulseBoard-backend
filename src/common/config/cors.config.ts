@@ -2,6 +2,7 @@
 import type { CorsOptions } from "cors";
 
 export const corsConfig: CorsOptions = {
-    origin: process.env.NODE_ENV === "development" ? "*" : process.env.CORS_CLIENT_URL,
+    // When credentials is true, origin cannot be "*". It must be explicitly defined.
+    origin: process.env.NODE_ENV === "development" ? "http://localhost:5173" : process.env.CORS_CLIENT_URL,
     credentials: true,
 };

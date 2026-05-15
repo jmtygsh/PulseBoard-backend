@@ -21,8 +21,17 @@ const register = async (req: Request<{}, {}, RegisterUserType>, res: Response) =
 };
 
 const socialAuthentication = async (req: Request<{}, {}, SocialAuthType>, res: Response) => {
-    const user = await socialAuthLogic(req.body);
-    ApiResponse.created(res, "Login successful", user);
+    const { user, accessToken, refreshToken } = await socialAuthLogic(req.body);
+
+    // Refresh token goes in httpOnly cookie — not accessible to JS
+    res.cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    ApiResponse.created(res, "Login successful", { user, accessToken });
 };
 
 const login = async (req: Request, res: Response) => {
@@ -41,7 +50,16 @@ const login = async (req: Request, res: Response) => {
 
 const refreshToken = async (req: Request, res: Response) => {
     const token = req.cookies?.refreshToken;
-    const { accessToken } = await authService.refresh({ token });
+    const { accessToken, refreshToken: newRefreshToken } = await authService.refresh({ token });
+
+    // Set new refresh token in cookie (Rolling Sessions)
+    res.cookie("refreshToken", newRefreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
     ApiResponse.ok(res, "Token refreshed", { accessToken });
 };
 

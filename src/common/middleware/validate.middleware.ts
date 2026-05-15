@@ -19,15 +19,16 @@ import ApiError from "../utils/api-error.js";
 --------------------------------------------------------- */
 const validateMiddleware = (schema: ZodSchema) => {
     return (req: Request, res: Response, next: NextFunction) => {
-        const result = schema.safeParse(req.body);
+        const payload = { ...req.params, ...req.query, ...req.body };
+        const result = schema.safeParse(payload);
 
         if (!result.success) {
             const errors = result.error.issues.map((err) => `${err.path.join('.')}: ${err.message}`);
-            throw ApiError.badRequest(errors.join("; "));
+            return next(ApiError.badRequest(errors.join("; ")));
         }
 
         req.body = result.data;
-        next();
+        return next();
     }
 }
 
@@ -38,6 +39,7 @@ const validateMiddleware = (schema: ZodSchema) => {
 --------------------------------------------------------- */
 
 const checkAuthenticate = (req: Request, res: Response, next: NextFunction) => {
+    console.log(" [log]:check Authenticate middleware running...");
     const header = req.headers['authorization'];
     if (!header || !header.startsWith('Bearer ')) {
         return next();
@@ -67,11 +69,24 @@ const checkAuthenticate = (req: Request, res: Response, next: NextFunction) => {
   if not do not allow access to the protected routes
 --------------------------------------------------------- */
 const protectedRoute = (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user) throw ApiError.unauthorized("Authentication Required");
+    if (!req.user) return next(ApiError.unauthorized("Authentication Required"));
     return next();
 };
 
-export { validateMiddleware, checkAuthenticate, protectedRoute };
+/* ---------------------------------------------------------
+  Global Error Handler
+--------------------------------------------------------- */
+const globalErrorHandler = (err: unknown, req: Request, res: Response, next: NextFunction) => {
+    const statusCode = err instanceof ApiError ? err.statusCode : 500;
+    const message = err instanceof Error ? err.message : "Internal Server Error";
+
+    res.status(statusCode).json({
+        success: false,
+        message,
+    });
+};
+
+export { validateMiddleware, checkAuthenticate, protectedRoute, globalErrorHandler };
 
 /* ---------------------------------------------------------
  "checkAuthenticate" softly identifies users while "protectedRoute" strictly blocks unauthenticated access, 

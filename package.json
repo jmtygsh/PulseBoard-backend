@@ -8,7 +8,8 @@
     "build": "tsc -p .",
     "dev": "tsc-watch --onSuccess \"node dist/server.js\"",
     "db:generate": "pnpm drizzle-kit generate",
-    "db:migrate": "pnpm drizzle-kit migrate"
+    "db:migrate": "pnpm drizzle-kit migrate",
+    "db:studio": "pnpm drizzle-kit studio"
   },
   "keywords": [],
   "author": "",
