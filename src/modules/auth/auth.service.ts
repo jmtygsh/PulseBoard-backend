@@ -29,8 +29,6 @@ const register = async ({ name, email, password }: RegisterUserType) => {
 
   const { rawToken, hashedToken } = generateResetToken();
 
-  await sendVerificationEmail(email, rawToken);
-
   const newUser = await User.create({
     name,
     email,
@@ -39,6 +37,14 @@ const register = async ({ name, email, password }: RegisterUserType) => {
     providerUserId: email,
     verificationToken: hashedToken,
   });
+
+  try {
+    await sendVerificationEmail(email, rawToken);
+  } catch (error) {
+    console.error("Failed to send verification email:", error);
+    // Even if the email fails (e.g. SMTP config issue), we want the user creation to succeed
+    // so they aren't stuck unable to create the account.
+  }
 
   return {
     id: newUser.id,
